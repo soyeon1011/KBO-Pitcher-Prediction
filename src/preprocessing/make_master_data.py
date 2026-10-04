@@ -33,13 +33,14 @@ for year in years:
         if '팀명_스탯티즈' in statiz_df.columns:
             statiz_df.rename(columns={'팀명_스탯티즈': '팀명'}, inplace=True)
 
-        # 2. 개명 선수 처리 (rename 후에!)
-        name_mapping = {'최채흥': '최지명', 
-                        '조영우': '조이현',
-                        '김이환': '김도현',
-                        '김정빈': '김사윤',
-                        '김윤수': '김무신'
-                        }
+        # 2. 개명 선수 처리
+        name_mapping = {
+            '최채흥': '최지명',
+            '조영우': '조이현',
+            '김이환': '김도현',
+            '김정빈': '김사윤',
+            '김윤수': '김무신'
+        }
         statiz_df['이름'] = statiz_df['이름'].replace(name_mapping)
 
         # 3. IP 분수 변환
@@ -62,20 +63,44 @@ initial_count = len(final_df)
 final_df = final_df[final_df['IP_KBO'] >= 25].copy()
 print(f"\n✂️ 25이닝 미만 필터링: {initial_count}명 -> {len(final_df)}명")
 
+# 외국인 투수 제거
+foreign_pitchers = [
+    '가라비토', '가빌리오', '다카하시', '데스파이네', '데이비슨', '라미레즈', '라이블리',
+    '로젠버그', '루친스키', '메르세데스', '모리만도', '몽고메리', '발라조빅', '벨라스케즈',
+    '수아레즈', '스트레일리', '스파크맨', '시라카와', '알드레드', '알칸타라', '에르난데스',
+    '엘리아스', '와이드너', '치리노스', '카스타노', '쿠에바스', '톨허스트', '헤이수스',
+    '감보아', '더모디', '라우어', '라일리', '레예스', '맥카티', '맥키니', '메디나',
+    '미란다', '바리아', '벤자민', '뷰캐넌', '브랜든', '브룩스', '브리검', '산체스',
+    '애플러', '앤더슨', '와이스', '요키시', '윌커슨', '잭로그', '카펜터', '콜어빈',
+    '크로우', '파노니', '파슨스', '패트릭', '프랑코', '플럿코', '화이트', '후라도'
+]
+
+before = len(final_df)
+final_df = final_df[~final_df['이름'].isin(foreign_pitchers)]
+print(f"\n🧹 외국인 투수 제거: {before}명 -> {len(final_df)}명")
+
 # 파생 변수
 print("\n⚙️ 투수 지표 계산 중...")
 
-# K/9 (9이닝당 삼진)
 final_df['K/9'] = np.where(final_df['IP_KBO'] > 0,
                            final_df['SO_KBO'] / final_df['IP_KBO'] * 9, 0).round(3)
-
-# BB/9 (9이닝당 볼넷)
 final_df['BB/9'] = np.where(final_df['IP_KBO'] > 0,
                             final_df['BB_KBO'] / final_df['IP_KBO'] * 9, 0).round(3)
-
-# K/BB (삼진/볼넷 비율)
 final_df['K/BB'] = np.where(final_df['BB_KBO'] > 0,
                             final_df['SO_KBO'] / final_df['BB_KBO'], 0).round(3)
+
+# Z-Score 표준화
+print("\n📊 Z-Score 표준화 중...")
+
+z_score_cols = ['ERA', 'WHIP', 'BB_KBO', 'SO_KBO', 'K/9', 'BB/9', 'K/BB']
+
+for col in z_score_cols:
+    if col in final_df.columns:
+        yearly_mean = final_df.groupby('시즌')[col].transform('mean')
+        yearly_std = final_df.groupby('시즌')[col].transform('std')
+        final_df[f'{col}_z'] = ((final_df[col] - yearly_mean) / yearly_std).round(3)
+
+print("✅ Z-Score 표준화 완료")
 
 save_path = '/Users/soyeon/Documents/GitHub/KBO-Pitcher-Prediction/data/KBO_Pitcher_Master_2021_2025.csv'
 final_df.to_csv(save_path, index=False, encoding='utf-8-sig')
