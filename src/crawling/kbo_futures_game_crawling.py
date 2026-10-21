@@ -16,12 +16,18 @@ OUTPUT_FILE = "/Users/soyeon/Documents/GitHub/KBO-Pitcher-Prediction/data/kbo_in
 # 1. 데이터 로드 (원본 파일은 읽기만 수행)
 try:
     df = pd.read_csv(INPUT_FILE)
+
+    # 투수만 필터링
+    master = pd.read_csv("/Users/soyeon/Documents/GitHub/KBO-Pitcher-Prediction/data/kbo_pitcher_master_final_2021_2025.csv")
+    pitcher_names = set(master['이름'])
+    df = df[df['선수'].isin(pitcher_names)]
+
     # 결장 기간 100일 이하인 선수들만 우선 수색 대상으로 선정
     suspects_df = df[(df['실제결장일수'] > 0) & (df['실제결장일수'] <= 100)].copy()
 except FileNotFoundError:
     print(f"❌ 파일을 찾을 수 없습니다: {INPUT_FILE}"); sys.exit()
 
-print(f"🕵️‍♂️ [정밀 수사] 타자 {len(suspects_df)}명을 수색합니다. (브라우저 확인 가능)")
+print(f"🕵️‍♂️ [정밀 수사] 투수 {len(suspects_df)}명을 수색합니다. (브라우저 확인 가능)")
 
 # 2. 셀레니움 설정 (창 띄움)
 options = webdriver.ChromeOptions()
