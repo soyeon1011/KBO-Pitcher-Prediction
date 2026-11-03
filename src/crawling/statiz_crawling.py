@@ -9,8 +9,8 @@ from io import StringIO
 # target_year = 2022
 # target_year = 2023
 # target_year = 2024
-target_year = 2025
-# target_year = 2026
+# target_year = 2025
+target_year = 2026
 # ==========================================
 
 # KBO 10개 구단 리스트
