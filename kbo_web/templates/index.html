@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KBO 선수 성적 예측</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --primary: #1a2e4a;
+    --accent: #e84c3d;
+    --accent2: #3498db;
+    --bg: #f4f6f9;
+    --card: #ffffff;
+    --text: #2c3e50;
+    --muted: #7f8c8d;
+    --border: #e0e6ed;
+    --pitcher-color: #2980b9;
+    --batter-color: #27ae60;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+
+  /* 헤더 */
+  header {
+    background: var(--primary);
+    color: #fff;
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  header span { font-size: 0.85rem; opacity: 0.7; margin-top: 2px; }
+  .badge { background: var(--accent); color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 12px; font-weight: 700; }
+
+  /* 검색 영역 */
+  .search-section {
+    background: var(--primary);
+    padding: 0 32px 32px;
+    position: relative;
+  }
+  .search-box {
+    max-width: 600px;
+    margin: 0 auto;
+    position: relative;
+  }
+  .search-box input {
+    width: 100%;
+    padding: 14px 20px;
+    border-radius: 12px;
+    border: none;
+    font-size: 1rem;
+    outline: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  }
+  .search-box input::placeholder { color: #aaa; }
+  .autocomplete-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 100;
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+  }
+  .autocomplete-list.show { display: block; }
+  .ac-item {
+    padding: 10px 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.95rem;
+  }
+  .ac-item:last-child { border-bottom: none; }
+  .ac-item:hover { background: var(--bg); }
+  .ac-type {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .ac-type.pitcher { background: #dbeafe; color: var(--pitcher-color); }
+  .ac-type.batter  { background: #dcfce7; color: var(--batter-color); }
+
+  /* 메인 */
+  main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  /* 빈 상태 */
+  .empty-state {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--muted);
+  }
+  .empty-state .icon { font-size: 4rem; margin-bottom: 16px; }
+  .empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: var(--text); }
+  .empty-state p { font-size: 0.9rem; }
+
+  /* 선수 헤더 */
+  .player-header {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .player-avatar {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    flex-shrink: 0;
+  }
+  .player-avatar.pitcher { background: #dbeafe; }
+  .player-avatar.batter  { background: #dcfce7; }
+  .player-info h2 { font-size: 1.6rem; font-weight: 700; }
+  .player-info .meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  .type-badge {
+    padding: 4px 14px; border-radius: 20px;
+    font-size: 0.8rem; font-weight: 700; margin-left: 10px;
+  }
+  .type-badge.pitcher { background: #dbeafe; color: var(--pitcher-color); }
+  .type-badge.batter  { background: #dcfce7; color: var(--batter-color); }
+
+  /* 탭 */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    background: var(--card);
+    padding: 6px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    width: fit-content;
+  }
+  .tab-btn {
+    padding: 8px 20px;
+    border: none;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--muted);
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .tab-btn.active {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* 카드 그리드 */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 768px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    header { padding: 16px; }
+    main { padding: 16px; }
+  }
+
+  /* 카드 */
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+  .card-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* 차트 */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* 스탯 표 */
+  .stat-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  .stat-table th {
+    text-align: left; padding: 8px 10px;
+    background: var(--bg); color: var(--muted);
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.3px;
+    position: sticky; top: 0;
+  }
+  .stat-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .stat-table tr:last-child td { border-bottom: none; }
+  .stat-table tr:hover td { background: #fafbfc; }
+  .table-wrap { overflow-x: auto; max-height: 300px; overflow-y: auto; }
+
+  /* 예측 카드 */
+  .predict-card {
+    background: linear-gradient(135deg, var(--primary) 0%, #2c4a6e 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .predict-card .label { font-size: 0.8rem; opacity: 0.7; margin-bottom: 8px; }
+  .predict-card .value { font-size: 2.8rem; font-weight: 800; letter-spacing: -1px; }
+  .predict-card .sub { font-size: 0.85rem; opacity: 0.7; margin-top: 6px; }
+  .predict-row { display: flex; gap: 20px; align-items: flex-end; }
+  .predict-item { flex: 1; }
+
+  /* 보완점 카드 */
+  .tip-item {
+    display: flex;
+    gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .tip-item:last-child { border-bottom: none; }
+  .tip-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+  .tip-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+  .tip-body { font-size: 0.85rem; color: var(--muted); line-height: 1.5; }
+
+  /* 부상 태그 */
+  .injury-tag {
+    display: inline-block;
+    padding: 2px 10px; border-radius: 10px;
+    font-size: 0.75rem; font-weight: 600;
+  }
+  .injury-tag.High { background: #fee2e2; color: #dc2626; }
+  .injury-tag.Mid  { background: #fef3c7; color: #d97706; }
+  .injury-tag.Low  { background: #e5e7eb; color: #6b7280; }
+
+  /* 로딩 */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    padding: 60px; color: var(--muted); gap: 12px;
+  }
+  .spinner {
+    width: 24px; height: 24px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent2);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1 style="cursor:pointer;" onclick="resetHome()">⚾ KBO 선수 성적 예측</h1>
+    <span>2021–2025 데이터 기반 Ridge 모델</span>
+  </div>
+
+</header>
+
+<div class="search-section">
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="선수 이름을 입력하세요 (예: 류현진, 이정후)" autocomplete="off">
+    <div class="autocomplete-list" id="acList"></div>
+  </div>
+</div>
+
+<main>
+  <!-- 빈 상태 -->
+  <div class="empty-state" id="emptyState">
+    <div class="icon">🔍</div>
+    <h2>선수 이름을 검색해보세요</h2>
+    <p>투수와 타자 모두 검색 가능합니다<br>과거 성적, 예측, 부상 이력, 보완점을 확인하세요</p>
+  </div>
+
+  <!-- 로딩 -->
+  <div class="loading hidden" id="loadingState">
+    <div class="spinner"></div>
+    <span>데이터 불러오는 중...</span>
+  </div>
+
+  <!-- 결과 영역 -->
+  <div id="resultArea" class="hidden">
+
+    <!-- 선수 헤더 -->
+    <div class="player-header">
+      <div class="player-avatar" id="playerAvatar"></div>
+      <div class="player-info">
+        <h2 id="playerName"></h2>
+        <div class="meta" id="playerMeta"></div>
+      </div>
+    </div>
+
+    <!-- 예측 -->
+    <div class="predict-card" id="predictCard">
+      <div class="predict-row">
+        <div class="predict-item">
+          <div class="label">⚡ 2026 시즌 예측</div>
+          <div class="value" id="predictValue">—</div>
+          <div class="sub" id="predictLabel">Ridge 모델 예측값</div>
+        </div>
+        <div class="predict-item" id="predictExtra"></div>
+      </div>
+    </div>
+
+    <!-- 탭 (타자 전용) -->
+    <div class="tabs hidden" id="batterTabs">
+      <button class="tab-btn active" onclick="switchTab('attack')">⚔️ 공격 지표</button>
+      <button class="tab-btn" onclick="switchTab('defense')">🛡️ 수비 지표</button>
+      <button class="tab-btn" onclick="switchTab('history')">📊 전체 성적</button>
+      <button class="tab-btn" onclick="switchTab('suggest')">💡 보완점</button>
+    </div>
+
+    <!-- 탭 (투수 전용) -->
+    <div class="tabs hidden" id="pitcherTabs">
+      <button class="tab-btn active" onclick="switchTab('history')">📊 성적 추이</button>
+      <button class="tab-btn" onclick="switchTab('injury')">🏥 부상 이력</button>
+      <button class="tab-btn" onclick="switchTab('suggest')">💡 보완점</button>
+    </div>
+
+    <!-- 차트 섹션 -->
+    <div class="grid-2" id="chartSection">
+      <div class="card">
+        <div class="card-title">📈 <span id="chart1Label">주요 지표 추이</span></div>
+        <div class="chart-wrap"><canvas id="chart1"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">📉 <span id="chart2Label">보조 지표 추이</span></div>
+        <div class="chart-wrap"><canvas id="chart2"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 데이터 테이블 -->
+    <div class="card" id="tableSection">
+      <div class="card-title">📋 연도별 상세 데이터</div>
+      <div class="table-wrap">
+        <table class="stat-table" id="dataTable">
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 부상 이력 -->
+    <div class="card hidden" id="injurySection">
+      <div class="card-title">🏥 부상 이력</div>
+      <div class="table-wrap">
+        <table class="stat-table">
+          <thead><tr><th>선수</th><th>부상 시작일</th><th>부상 분류</th><th>심각도</th></tr></thead>
+          <tbody id="injuryBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 보완점 -->
+    <div class="card hidden" id="suggestSection">
+      <div class="card-title">💡 개선 포인트 (최근 시즌 기준)</div>
+      <div id="tipList"></div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+let allPlayers = [];
+let currentData = null;
+let currentTab = 'history';
+let charts = {};
+
+// ── 선수 목록 로드 ──────────────────────────────────────────
+async function loadPlayers() {
+  try {
+    const res = await fetch('/api/players');
+    allPlayers = await res.json();
+  } catch(e) { console.error('선수 목록 로드 실패', e); }
+}
+
+// ── 검색 자동완성 ───────────────────────────────────────────
+const searchInput = document.getElementById('searchInput');
+const acList = document.getElementById('acList');
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  if (q.length < 1) { acList.classList.remove('show'); return; }
+  const filtered = allPlayers.filter(p => p.name.includes(q)).slice(0, 10);
+  if (!filtered.length) { acList.classList.remove('show'); return; }
+  acList.innerHTML = filtered.map(p =>
+    `<div class="ac-item" onclick="selectPlayer('${p.name}')">
+      <span>${p.name}</span>
+      <span class="ac-type ${p.type}">${p.type === 'pitcher' ? '투수' : '타자'}</span>
+    </div>`
+  ).join('');
+  acList.classList.add('show');
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-box')) acList.classList.remove('show');
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = searchInput.value.trim();
+    const match = allPlayers.find(p => p.name === q);
+    if (match) selectPlayer(q);
+  }
+});
+
+function selectPlayer(name) {
+  searchInput.value = name;
+  acList.classList.remove('show');
+  loadPlayer(name);
+}
+
+// ── 선수 데이터 로드 ────────────────────────────────────────
+async function loadPlayer(name) {
+  show('loadingState');
+  hide('emptyState');
+  hide('resultArea');
+
+  try {
+    const [dataRes, predRes] = await Promise.all([
+      fetch(`/api/player/${encodeURIComponent(name)}`),
+      fetch(`/api/predict/${encodeURIComponent(name)}`)
+    ]);
+    currentData = await dataRes.json();
+    const pred = await predRes.json();
+    renderPlayer(currentData, pred);
+  } catch(e) {
+    hide('loadingState');
+    show('emptyState');
+    console.error(e);
+  }
+}
+
+// ── 렌더링 ──────────────────────────────────────────────────
+function renderPlayer(data, pred) {
+  hide('loadingState');
+  show('resultArea');
+
+  const isPitcher = data.type === 'pitcher';
+
+  // 헤더
+  const avatar = document.getElementById('playerAvatar');
+  avatar.className = `player-avatar ${data.type}`;
+  avatar.textContent = isPitcher ? '⚾' : '🏏';
+  document.getElementById('playerName').textContent = data.name;
+  const typeLabel = isPitcher ? '투수' : '타자';
+  const latestYear = data.history.length ? (data.history[data.history.length-1]['연도'] || data.history[data.history.length-1]['시즌'] || '') : '';
+  const teamName   = data.history.length ? (data.history[data.history.length-1]['팀명'] || data.history[data.history.length-1]['팀'] || '') : '';
+  document.getElementById('playerMeta').innerHTML =
+    `${teamName} <span class="type-badge ${data.type}">${typeLabel}</span> ${latestYear ? `· 최근 ${latestYear}시즌` : ''}`;
+
+  // 예측값
+  if (pred.prediction !== null && pred.prediction !== undefined && !pred.error) {
+    document.getElementById('predictValue').textContent = formatStat(pred.prediction, pred.target);
+    const targetLabel = isPitcher ? 'ERA' : '타율';
+    document.getElementById('predictLabel').textContent = `2026 예측 ${targetLabel}`;
+  } else {
+    document.getElementById('predictValue').textContent = '—';
+    document.getElementById('predictLabel').textContent = pred.error || '모델 파일 없음';
+  }
+
+  // 2026 실제 데이터 있으면 최근 시즌 표시 업데이트
+  if (pred.actual !== null && pred.actual !== undefined) {
+    const teamName = data.history.length ? (data.history[data.history.length-1]['팀명'] || data.history[data.history.length-1]['팀'] || '') : '';
+    const typeLabel = isPitcher ? '투수' : '타자';
+    document.getElementById('playerMeta').innerHTML =
+      `${teamName} <span class="type-badge ${data.type}">${typeLabel}</span> · 최근 2026시즌`;
+  }
+
+  // 실제 2026 성적 (사후 검증)
+  const extraEl = document.getElementById('predictExtra');
+  if (pred.actual !== null && pred.actual !== undefined) {
+    const diff = pred.prediction - pred.actual;
+    const diffStr = (diff >= 0 ? '+' : '') + diff.toFixed(isPitcher ? 2 : 3);
+    const diffColor = isPitcher
+      ? (Math.abs(diff) < 0.3 ? '#22c55e' : '#ef4444')
+      : (Math.abs(diff) < 0.020 ? '#22c55e' : '#ef4444');
+    extraEl.innerHTML = `
+      <div class="label">✅ ${pred.actual_label || '실제 성적'}</div>
+      <div class="value">${pred.actual}</div>
+      <div class="sub" style="color:${diffColor}">예측 오차 ${diffStr}</div>
+    `;
+  } else {
+    extraEl.innerHTML = '';
+  }
+
+  // 탭 표시
+  hide('batterTabs'); hide('pitcherTabs');
+  show(isPitcher ? 'pitcherTabs' : 'batterTabs');
+
+  // 초기 탭
+  currentTab = 'history';
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const tabs = isPitcher ? ['history','injury','suggest'] : ['attack','defense','history','suggest'];
+    b.classList.toggle('active', i === 0);
+  });
+
+  // 차트 그리기
+  renderCharts(data, isPitcher);
+  // 테이블
+  renderTable(data.history, 'tableHead', 'tableBody', data.type);
+  // 부상
+  renderInjury(data.injury);
+  // 보완점
+  renderSuggestions(data.suggestions);
+
+  // 섹션 표시
+  show('chartSection'); show('tableSection');
+  hide('injurySection'); hide('suggestSection');
+}
+
+function renderCharts(data, isPitcher) {
+  destroyCharts();
+  const history = data.history;
+  const years = history.map(r => r['연도'] || r['시즌'] || '');
+
+  if (isPitcher) {
+    document.getElementById('chart1Label').textContent = 'ERA / WHIP 추이';
+    document.getElementById('chart2Label').textContent = 'K/9 / BB/9 추이';
+
+    charts.c1 = makeLineChart('chart1', years,
+      [
+        { label: 'ERA', data: history.map(r => r['ERA_KBO'] ?? r['평균자책점'] ?? r['ERA']), color: '#e84c3d' },
+        { label: 'WHIP', data: history.map(r => r['WHIP_KBO'] ?? r['WHIP']), color: '#e67e22' },
+      ]
+    );
+    charts.c2 = makeLineChart('chart2', years,
+      [
+        { label: 'K/9', data: history.map(r => r['K/9']), color: '#3498db' },
+        { label: 'BB/9', data: history.map(r => r['BB/9']), color: '#9b59b6' },
+      ]
+    );
+  } else {
+    document.getElementById('chart1Label').textContent = 'AVG / OBP / SLG 추이';
+    document.getElementById('chart2Label').textContent = 'OPS / wOBA 추이';
+
+    charts.c1 = makeLineChart('chart1', years,
+      [
+        { label: '타율', data: history.map(r => r['AVG_KBO'] ?? r['타율'] ?? r['AVG']), color: '#27ae60' },
+        { label: '출루율', data: history.map(r => r['OBP']), color: '#2980b9' },
+        { label: '장타율', data: history.map(r => r['SLG']), color: '#e84c3d' },
+      ]
+    );
+    charts.c2 = makeLineChart('chart2', years,
+      [
+        { label: 'OPS',  data: history.map(r => r['OPS']), color: '#8e44ad' },
+        { label: 'wOBA', data: history.map(r => r['wOBA']), color: '#16a085' },
+      ]
+    );
+  }
+}
+
+function makeLineChart(canvasId, labels, datasets) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  return new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: datasets.map(ds => ({
+        label: ds.label,
+        data: ds.data,
+        borderColor: ds.color,
+        backgroundColor: ds.color + '22',
+        tension: 0.3,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        fill: false,
+        borderWidth: 2,
+      }))
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+        y: { grid: { color: '#f0f0f0' }, ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+const PITCHER_SHOW_COLS = ['연도','시즌','팀명','ERA_KBO','IP_KBO','G_KBO','GS','W_KBO','L_KBO','SV','HLD','SO_KBO','BB_KBO','WHIP_KBO','K/9','FIP','WAR'];
+const BATTER_SHOW_COLS  = ['연도','팀명','AVG_KBO','PA_KBO','HR_KBO','RBI_KBO','OBP','SLG','OPS','wRC+','WAR','BB/K','ISO','wOBA'];
+
+function renderTable(rows, headId, bodyId, type) {
+  if (!rows || !rows.length) return;
+  const allCols = Object.keys(rows[0]);
+
+  // 핵심 컬럼 필터: type 힌트 없으면 전체 컬럼에서 자동 판별
+  let showList = null;
+  if (type === 'pitcher') showList = PITCHER_SHOW_COLS;
+  else if (type === 'batter') showList = BATTER_SHOW_COLS;
+  else if (allCols.includes('ERA_KBO')) showList = PITCHER_SHOW_COLS;
+  else if (allCols.includes('AVG_KBO')) showList = BATTER_SHOW_COLS;
+
+  const cols = showList
+    ? showList.filter(c => allCols.includes(c))
+    : allCols;
+
+  const fmt = (c, v) => {
+    if (v === null || v === undefined) return '—';
+    if (['ERA_KBO','WHIP_KBO','FIP','K/9','BB/9','K/BB','OBP','SLG','OPS','wOBA','AVG_KBO','ISO','BB/K'].includes(c))
+      return parseFloat(v).toFixed(3);
+    if (c === 'WAR') return parseFloat(v).toFixed(1);
+    if (c === 'IP_KBO') return parseFloat(v).toFixed(1);
+    if (c === 'wRC+') return Math.round(v);
+    return v;
+  };
+
+  document.getElementById(headId).innerHTML =
+    '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  document.getElementById(bodyId).innerHTML = rows.map(r =>
+    '<tr>' + cols.map(c => `<td>${fmt(c, r[c])}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+function renderInjury(inj) {
+  if (!inj || !inj.length) {
+    document.getElementById('injuryBody').innerHTML = '<tr><td colspan="4" style="color:#999;text-align:center;padding:20px">부상 이력 없음</td></tr>';
+    return;
+  }
+  document.getElementById('injuryBody').innerHTML = inj.map(r =>
+    `<tr>
+      <td>${r['선수'] || '—'}</td>
+      <td>${r['부상시작일'] || '—'}</td>
+      <td>${r['부상분류'] || '—'}</td>
+      <td>${r['심각도점수'] || '—'}</td>
+    </tr>`
+  ).join('');
+}
+
+function renderSuggestions(tips) {
+  if (!tips || !tips.length) return;
+  document.getElementById('tipList').innerHTML = tips.map(t =>
+    `<div class="tip-item">
+      <div class="tip-icon">${t.icon}</div>
+      <div>
+        <div class="tip-title">${t.title}</div>
+        <div class="tip-body">${t.body}</div>
+      </div>
+    </div>`
+  ).join('');
+}
+
+// ── 탭 전환 ────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const tabs = currentData?.type === 'pitcher'
+      ? ['history','injury','suggest'] : ['attack','defense','history','suggest'];
+    b.classList.toggle('active', tabs.indexOf(tab) === Array.from(document.querySelectorAll('.tab-btn')).indexOf(b));
+  });
+
+  hide('chartSection'); hide('tableSection');
+  hide('injurySection'); hide('suggestSection');
+
+  if (tab === 'history') {
+    show('chartSection'); show('tableSection');
+    renderTable(currentData.history, 'tableHead', 'tableBody', currentData.type);
+    renderCharts(currentData, currentData.type === 'pitcher');
+  } else if (tab === 'attack') {
+    show('chartSection'); show('tableSection');
+    renderTable(currentData.attack, 'tableHead', 'tableBody', 'batter');
+    renderCharts(currentData, false);
+  } else if (tab === 'defense') {
+    show('tableSection');
+    if (currentData.defense && currentData.defense.length) {
+      renderTable(currentData.defense, 'tableHead', 'tableBody');
+    } else {
+      document.getElementById('tableBody').innerHTML =
+        '<tr><td colspan="20" style="color:#999;text-align:center;padding:30px">수비 지표 데이터 없음</td></tr>';
+    }
+  } else if (tab === 'injury') {
+    show('injurySection');
+  } else if (tab === 'suggest') {
+    show('suggestSection');
+  }
+}
+
+// ── 유틸 ───────────────────────────────────────────────────
+function formatStat(val, label) {
+  if (val === null || val === undefined) return '—';
+  const l = (label || '').toLowerCase();
+  if (l.includes('era') || l.includes('자책')) return val.toFixed(2);
+  if (l.includes('ops') || l.includes('avg') || l.includes('타율') || l.includes('woba')) return val.toFixed(3);
+  return val.toFixed(3);
+}
+
+function show(id) { document.getElementById(id)?.classList.remove('hidden'); }
+function hide(id) { document.getElementById(id)?.classList.add('hidden'); }
+
+function resetHome() {
+  window.location.href = '/';
+}
+
+function destroyCharts() {
+  Object.values(charts).forEach(c => c?.destroy());
+  charts = {};
+}
+
+// ── 초기화 ─────────────────────────────────────────────────
+loadPlayers();
+</script>
+</body>
+</html>
